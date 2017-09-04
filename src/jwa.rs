@@ -370,6 +370,26 @@ impl SignatureAlgorithm {
     ) -> Result<(), Error> {
         let public_key = match *secret {
             Secret::PublicKey(ref public_key) => public_key,
+            Secret::Pkcs{ref n, ref e} => {
+                let params = match *algorithm {
+                    SignatureAlgorithm::RS256 => &signature::RSA_PKCS1_2048_8192_SHA256,
+                    SignatureAlgorithm::RS384 => &signature::RSA_PKCS1_2048_8192_SHA384,
+                    SignatureAlgorithm::RS512 => &signature::RSA_PKCS1_2048_8192_SHA512,
+                    SignatureAlgorithm::PS256 => &signature::RSA_PSS_2048_8192_SHA256,
+                    SignatureAlgorithm::PS384 => &signature::RSA_PSS_2048_8192_SHA384,
+                    SignatureAlgorithm::PS512 => &signature::RSA_PSS_2048_8192_SHA512,
+                    _ => unreachable!("(n,e) secret with a non-rsa algorithm should not happen"),
+                };
+
+                let sn = &n.to_bytes_be()[..];
+                let se = &e.to_bytes_be()[..];
+                let n = untrusted::Input::from(sn);
+                let e = untrusted::Input::from(se);
+                let message = untrusted::Input::from(data);
+                let signature = untrusted::Input::from(expected_signature);
+
+                return Ok(signature::primitive::verify_rsa(params, (n, e), message, signature)?)
+            }
             _ => Err("Invalid secret type. A PublicKey is required".to_string())?,
         };
         let public_key_der = untrusted::Input::from(public_key.as_slice());
@@ -812,6 +832,37 @@ mod tests {
             expected_signature_bytes.as_slice(),
             payload_bytes,
             &public_key,
+        ));
+    }
+
+    #[test]
+    fn sign_and_verify_rs256_key_params() {
+        use num::BigUint;
+        // There is no way in Ring right now to get these values from the key
+        let params = Secret::Pkcs {
+            n: BigUint::parse_bytes(b"D57336432EDB91A0A98E3BC2959C08D79017CBDF7AEA6EDCDEC611DA746E1\
+                                      DBD144FB4391163E797FB392C438CC70AEA89796D8FCFF69646655AD02E00\
+                                      169B5F1C4C9150D3399D80DCE6D8F6F057B105F5FC5EE774B0A8FF20A67D8\
+                                      0E6707D380462D2CDCB913E6EE9EA7585CD504AE45B6930BC713D02999E36\
+                                      BF449CFFA2385374F3850819056207880A2E8BA47EE8A86CBE4C361D6D54B\
+                                      95F2E1668262F79C2774D4234B8D5C6D15A0E95493E308AA98F002A78BB92\
+                                      8CB78F1E7E06243AB6D7EAFAB59F6446774B0479F6593F88F763978F14EFB\
+                                      7F422B4C66E8EB53FF5E6DC4D3C92952D8413E06E2D9EB1DF50D8224FF3BD\
+                                      319FF5E4258D06C578B9527B", 16).unwrap(),
+            e: BigUint::from(65537u32)
+        };
+        let payload = "payload".to_string();
+        let payload_bytes = payload.as_bytes();
+        let expected_signature = "JIHqiBfUknrFPDLT0gxyoufD06S43ZqWN_PzQqHZqQ-met7kZmkSTYB_rUyotLMxlKkuXdnvKmWm\
+                                  dwGAHWEwDvb5392pCmAAtmUIl6LormxJptWYb2PoF5jmtX_lwV8y4RYIh54Ai51162VARQCKAsxL\
+                                  uH772MEChkcpjd31NWzaePWoi_IIk11iqy6uFWmbLLwzD_Vbpl2C6aHR3vQjkXZi05gA3zksjYAh\
+                                  j-m7GgBt0UFOE56A4USjhQwpb4g3NEamgp51_kZ2ULi4Aoo_KJC6ynIm_pR6rEzBgwZjlCUnE-6o\
+                                  5RPQZ8Oau03UDVH2EwZe-Q91LaWRvkKjGg5Tcw";
+        let expected_signature_bytes: Vec<u8> = not_err!(CompactPart::from_base64(&expected_signature));
+        not_err!(SignatureAlgorithm::RS256.verify(
+            expected_signature_bytes.as_slice(), 
+            payload_bytes, 
+            &params,
         ));
     }
 
