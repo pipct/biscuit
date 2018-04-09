@@ -27,7 +27,7 @@ chrono = "0.4"
 data-encoding = "1"
 lazy_static = "1"
 num = "0.1.37"
-ring = { git = "https://github.com/briansmith/ring", features = ["rsa_signing"] }
+ring = { version = "0.12.1", features = ["rsa_signing"] }
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = { version = "1.0", features = ["preserve_order"] }
